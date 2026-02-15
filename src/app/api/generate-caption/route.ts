@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,20 +53,32 @@ Based on this detailed description of the artwork: "${imageDesc}"
 Generate ONE engaging, ready-to-post Instagram caption. 
 Make it poetic, promotional, and artist-voiced. Include relevant emojis, 8-12 targeted hashtags at the end. Keep under 300 characters. End with a call-to-action like "What do you think?" or "Save for inspo!"`;
 
-    const claudeResponse = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    });
+  // Claude call
+const claudeResponse = await anthropic.messages.create({
+  model: 'claude-3-5-sonnet-20241022',
+  max_tokens: 300,
+  messages: [{ role: 'user', content: prompt }],
+});
 
-    const caption = claudeResponse.content[0].text.trim();
+const textBlocks = claudeResponse.content.filter(
+  (block): block is TextBlock => block.type === 'text'
+);
 
-    return NextResponse.json({ caption });
-  } catch (error: any) {
+if (textBlocks.length === 0) {
+  throw new Error('Claude response contained no text blocks');
+}
+
+const caption = textBlocks
+  .map((block) => block.text)
+  .join('\n')
+  .trim();
+
+return NextResponse.json({ caption });
+} catch (error: any) {
     console.error('Generation error:', error.message, error.stack);
     return NextResponse.json(
       { error: error.message || 'Failed to generate caption' },
       { status: 500 }
     );
   }
-}
+};
