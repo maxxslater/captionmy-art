@@ -1,0 +1,7 @@
+/* src/components/ShinyText.css */
+.shiny-text {
+  display: inline-block;
+  font-weight: bold; /* or whatever base style you want */
+  /* Optional: prevent line breaks in middle of shine */
+  white-space: nowrap;
+}
