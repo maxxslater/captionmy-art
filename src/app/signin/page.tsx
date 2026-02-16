@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 export default function SignInPage() {
   const [darkMode, setDarkMode] = useState(false);
@@ -11,6 +13,7 @@ export default function SignInPage() {
   const [error, setError] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [showReset, setShowReset] = useState(false);
+  const router = useRouter();
 
   const theme = {
     bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAFAF8]',
@@ -39,23 +42,19 @@ export default function SignInPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      const data = await response.json();
+      if (signInError) throw signInError;
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Invalid credentials');
+      if (data.user) {
+        // Redirect to home
+        router.push('/');
       }
-
-      // Redirect to dashboard/home
-      window.location.href = '/';
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
@@ -71,20 +70,15 @@ export default function SignInPage() {
     setError('');
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to send reset email');
-      }
+      if (resetError) throw resetError;
 
       setResetSent(true);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to send reset email');
     } finally {
       setLoading(false);
     }
@@ -173,7 +167,7 @@ export default function SignInPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:border-[${theme.accent}] focus:outline-none transition`}
+                      className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:outline-none transition`}
                       required
                     />
                   </div>
@@ -197,7 +191,7 @@ export default function SignInPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
-                      className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:border-[${theme.accent}] focus:outline-none transition`}
+                      className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:outline-none transition`}
                       required
                     />
                   </div>
@@ -254,7 +248,7 @@ export default function SignInPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
-                        className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:border-[${theme.accent}] focus:outline-none transition`}
+                        className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 focus:outline-none transition`}
                         required
                       />
                     </div>

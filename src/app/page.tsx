@@ -1,17 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 export default function Home() {
+  const router = useRouter();
+  
+  // Auth state
+  const [user, setUser] = useState<any>(null);
+  const [tier, setTier] = useState<string>('FREE');
+  const [loading, setLoading] = useState(true);
+  const [usageData, setUsageData] = useState<any>(null);
+  
+  // Form state
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [generatingCaption, setGeneratingCaption] = useState(false);
   const [caption, setCaption] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   
-  // Form state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [medium, setMedium] = useState('');
   const [artStyle, setArtStyle] = useState('');
@@ -25,6 +35,103 @@ export default function Home() {
   const [includeCTA, setIncludeCTA] = useState(false);
   const [includeEmoji, setIncludeEmoji] = useState(false);
   const [seoOptimized, setSeoOptimized] = useState(true);
+
+  // Tier configuration
+  const TIER_CONFIG = {
+    FREE: { limit: 3, period: 'week', maxPlatforms: 1, badge: '◯', color: '#9B9B9B' },
+    PRO: { limit: 5, period: 'week', maxPlatforms: 999, badge: '◐', color: '#6B9BD1' },
+    PREMIUM: { limit: 10, period: 'month', maxPlatforms: 999, badge: '◈', color: '#D4AF37' },
+    PLATINUM: { limit: 999999, period: 'month', maxPlatforms: 999, badge: '◆', color: '#E5C278' },
+  };
+
+  // Check auth on mount
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/signin');
+        return;
+      }
+
+      setUser(session.user);
+
+      // Get subscription
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('tier')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (sub) {
+        setTier(sub.tier);
+      }
+
+      // Get usage for current period
+      await fetchUsage(session.user.id, sub?.tier || 'FREE');
+      
+    } catch (err) {
+      console.error('Auth error:', err);
+      router.push('/signin');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUsage = async (userId: string, userTier: string) => {
+    const config = TIER_CONFIG[userTier as keyof typeof TIER_CONFIG];
+    const now = new Date();
+    let periodStart = new Date();
+    let periodEnd = new Date();
+
+    if (config.period === 'week') {
+      // Start of week (Monday)
+      const day = periodStart.getDay();
+      const diff = periodStart.getDate() - day + (day === 0 ? -6 : 1);
+      periodStart.setDate(diff);
+      periodStart.setHours(0, 0, 0, 0);
+      periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodStart.getDate() + 6);
+      periodEnd.setHours(23, 59, 59, 999);
+    } else {
+      // Start of month
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      periodEnd.setHours(23, 59, 59, 999);
+    }
+
+    const { data } = await supabase
+      .from('usage')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('tier', userTier)
+      .gte('period_start', periodStart.toISOString())
+      .lte('period_end', periodEnd.toISOString())
+      .single();
+
+    if (data) {
+      setUsageData(data);
+    } else {
+      // Create usage record if doesn't exist
+      const { data: newUsage } = await supabase
+        .from('usage')
+        .insert({
+          user_id: userId,
+          tier: userTier,
+          captions_used: 0,
+          period_start: periodStart.toISOString(),
+          period_end: periodEnd.toISOString(),
+        })
+        .select()
+        .single();
+      
+      setUsageData(newUsage);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,17 +153,37 @@ export default function Home() {
   ];
 
   const togglePlatform = (platformId: string) => {
-    setSelectedPlatforms(prev =>
-      prev.includes(platformId)
-        ? prev.filter(p => p !== platformId)
-        : [...prev, platformId]
-    );
+    const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
+    
+    if (tier === 'FREE' && selectedPlatforms.includes(platformId)) {
+      // Allow deselecting
+      setSelectedPlatforms([]);
+    } else if (tier === 'FREE' && selectedPlatforms.length >= config.maxPlatforms) {
+      // Show upgrade message
+      setError('Free tier limited to 1 platform. Upgrade to select multiple!');
+      return;
+    } else {
+      setSelectedPlatforms(prev =>
+        prev.includes(platformId)
+          ? prev.filter(p => p !== platformId)
+          : [...prev, platformId]
+      );
+      setError(null);
+    }
   };
 
   const handleGenerate = async () => {
-    if (!image) return;
+    if (!image || !user) return;
+
+    const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
     
-    setLoading(true);
+    // Check usage limits
+    if (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit) {
+      setError(`You've used all ${config.limit} captions this ${config.period}. Upgrade for more!`);
+      return;
+    }
+    
+    setGeneratingCaption(true);
     setError(null);
     
     try {
@@ -90,18 +217,32 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to generate');
         setCaption(data.caption);
+
+        // Update usage
+        if (usageData) {
+          await supabase
+            .from('usage')
+            .update({ captions_used: usageData.captions_used + 1 })
+            .eq('id', usageData.id);
+          
+          setUsageData({ ...usageData, captions_used: usageData.captions_used + 1 });
+        }
       };
       reader.readAsDataURL(image);
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setGeneratingCaption(false);
     }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/signin');
   };
 
   const canGenerate = image && selectedPlatforms.length > 0 && medium;
 
-  // Theme classes
   const theme = {
     bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAFAF8]',
     cardBg: darkMode ? 'bg-[#1A1A1A]' : 'bg-white',
@@ -120,6 +261,17 @@ export default function Home() {
     selectedBg: darkMode ? 'bg-[#E5E5E5]' : 'bg-[#1A1A1A]',
     selectedText: darkMode ? 'text-[#0A0A0A]' : 'text-white',
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen ${theme.bg} flex items-center justify-center`}>
+        <p className={theme.text}>Loading...</p>
+      </div>
+    );
+  }
+
+  const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
+  const usageRemaining = tier === 'PLATINUM' ? '∞' : (config.limit - (usageData?.captions_used || 0));
 
   return (
     <>
@@ -158,60 +310,6 @@ export default function Home() {
             repeating-linear-gradient(0deg, transparent, transparent 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 4px),
             repeating-linear-gradient(90deg, transparent, transparent 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 4px);
         }
-
-        input[type="checkbox"] {
-          appearance: none;
-          width: 18px;
-          height: 18px;
-          border: 2px solid ${darkMode ? '#3A3A3A' : '#4A4A4A'};
-          border-radius: 3px;
-          cursor: pointer;
-          position: relative;
-          transition: all 0.2s;
-          background: ${darkMode ? '#1A1A1A' : 'white'};
-        }
-
-        input[type="checkbox"]:checked {
-          background: ${darkMode ? '#E5E5E5' : '#1A1A1A'};
-          border-color: ${darkMode ? '#E5E5E5' : '#1A1A1A'};
-        }
-
-        input[type="checkbox"]:checked::after {
-          content: '✓';
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          color: ${theme.accent};
-          font-size: 12px;
-          font-weight: bold;
-        }
-
-        select, textarea, input[type="file"] {
-          transition: all 0.2s ease;
-        }
-
-        select:focus, textarea:focus {
-          outline: none;
-          border-color: ${theme.accent};
-          box-shadow: 0 0 0 1px ${theme.accent};
-        }
-
-        .platform-btn {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .platform-btn:hover {
-          transform: translateY(-2px);
-        }
-
-        .platform-btn.selected {
-          box-shadow: 0 4px 20px ${darkMode ? 'rgba(229, 194, 120, 0.3)' : 'rgba(212, 175, 55, 0.3)'};
-        }
-
-        .theme-toggle {
-          transition: all 0.3s ease;
-        }
       `}</style>
 
       <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
@@ -227,22 +325,40 @@ export default function Home() {
                   Caption<span className="font-semibold">My.Art</span>
                 </h1>
                 <div className="h-2 w-2 rounded-full mt-4" style={{ backgroundColor: theme.accent }}></div>
+                </div>
+                </div>
+                
+                </div>
+                </header>
+                {/* Tier Badge */}
+                <div className="ml-4 mt-4 flex items-center gap-2 px-3 py-1 rounded-full border-2" style={{ borderColor: config.color }}>
+                  <span style={{ color: config.color }} className="text-xl">{config.badge}</span>
+                  <span className={`text-xs uppercase tracking-wider font-medium ${theme.text}`}>{tier}</span>
+                </div>
               </div>
+              
               
               {/* Navigation */}
               <div className="flex items-center gap-6">
+                {/* Usage Display */}
+                <div className={`text-xs ${theme.textSecondary} font-medium`}>
+                  {usageRemaining} / {tier === 'PLATINUM' ? '∞' : config.limit} this {config.period}
+                </div>
+                
                 <Link 
                   href="/pricing" 
                   className={`text-sm ${theme.textSecondary} hover:${theme.text} transition font-medium tracking-wide`}
                 >
-                  Pricing
+                  {tier === 'FREE' ? 'Upgrade' : 'Pricing'}
                 </Link>
-                <Link 
-                  href="/signin" 
+                
+                <button
+                  onClick={handleSignOut}
                   className={`text-sm ${theme.textSecondary} hover:${theme.text} transition font-medium tracking-wide`}
                 >
-                  Sign In
-                </Link>
+                  Sign Out
+                </button>
+                
                 <button
                   onClick={() => setDarkMode(!darkMode)}
                   className={`theme-toggle p-3 ${theme.inputBg} ${theme.inputBorder} border-2 rounded-sm hover:${theme.borderHover} flex items-center gap-2`}
@@ -251,16 +367,40 @@ export default function Home() {
                   <span className="text-xl">{darkMode ? '☀' : '☾'}</span>
                 </button>
               </div>
-            </div>
             <p className={`mt-3 ${theme.textSecondary} text-lg font-light tracking-wide`}>
               Elevate your art with intelligent, platform-optimized captions
             </p>
-          </div>
-        </header>
+          )
 
+         
         {/* Main Content */}
-        <main className="relative max-w-7xl mx-auto px-6 py-12">
+        
           
+          {/* Upgrade Banner (if near limit) */}
+          {tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit - 1 && (
+            <div className="mb-8 p-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg font-medium text-gray-900">
+                    {usageData.captions_used >= config.limit ? '🎯 Limit Reached!' : '⚠️ Almost Out!'}
+                  </p>
+                  <p className="text-sm text-gray-700 mt-1">
+                    {usageData.captions_used >= config.limit 
+                      ? `You've used all ${config.limit} captions this ${config.period}`
+                      : `Only ${config.limit - usageData.captions_used} caption${config.limit - usageData.captions_used > 1 ? 's' : ''} left this ${config.period}`
+                    }
+                  </p>
+                </div>
+                <Link 
+                  href="/pricing"
+                  className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-black transition"
+                >
+                  Upgrade Now
+                </Link>
+              </div>
+            </div>
+          )}
+
           {/* Upload Section */}
           <section className="mb-16">
             <h2 className={`text-3xl font-light ${theme.text} mb-6 brush-stroke inline-block`}>
@@ -281,7 +421,7 @@ export default function Home() {
                   <img
                     src={imagePreview}
                     alt="Your artwork"
-                    className="max-h-[500px] mx-auto shadow-2xl"
+                    className="max-h-125 mx-auto shadow-2xl"
                   />
                   <button
                     onClick={() => {
@@ -310,23 +450,27 @@ export default function Home() {
             <h2 className={`text-3xl font-light ${theme.text} mb-2 brush-stroke inline-block`}>
               Platforms
             </h2>
-            <p className={`text-sm ${theme.textTertiary} mt-6 mb-8 font-light`}>
-              Select one or more platforms for optimized captions
-            </p>
+            {tier === 'FREE' && (
+              <p className={`text-sm ${theme.textTertiary} mt-6 mb-8 font-light`}>
+                Free tier: Select 1 platform • <Link href="/pricing" className="underline hover:opacity-80">Upgrade</Link> for multiple platforms
+              </p>
+            )}
             
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-8">
               {platforms.map((platform) => (
                 <button
                   key={platform.id}
                   type="button"
                   onClick={() => togglePlatform(platform.id)}
+                  disabled={tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(platform.id)}
                   className={`
-                    platform-btn relative px-6 py-5 ${theme.cardBg} border-2 rounded-sm text-center
+                    platform-btn relative px-6 py-5 ${theme.cardBg} border-2 rounded-sm text-center transition-all
                     ${
                       selectedPlatforms.includes(platform.id)
                         ? `${theme.inputBorder.replace('border-', 'border-[#')} ${theme.selectedBg} ${theme.selectedText} selected`
                         : `${theme.inputBorder} ${theme.textSecondary} hover:${theme.borderHover}`
                     }
+                    ${tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(platform.id) ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
                   <div className="text-2xl mb-2 font-light">{platform.icon}</div>
@@ -351,7 +495,6 @@ export default function Home() {
             </p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
               {/* Medium */}
               <div>
                 <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
@@ -602,10 +745,10 @@ export default function Home() {
           <div className={`border-t ${theme.border} pt-12`}>
             <button
               onClick={handleGenerate}
-              disabled={loading || !canGenerate}
+              disabled={generatingCaption || !canGenerate || (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit)}
               className={`w-full md:w-auto px-12 py-4 ${theme.buttonBg} ${theme.buttonText} text-sm uppercase tracking-widest font-medium hover:${theme.buttonHover} disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 hover:tracking-[0.3em]`}
             >
-              {loading ? 'Generating...' : 'Generate Caption'}
+              {generatingCaption ? 'Generating...' : 'Generate Caption'}
             </button>
             
             {!canGenerate && image && (
@@ -646,7 +789,7 @@ export default function Home() {
               </button>
             </div>
           )}
-        </main>
+        
 
         {/* Footer */}
         <footer className={`border-t ${theme.border} mt-24 py-8`}>
@@ -656,7 +799,5 @@ export default function Home() {
             </p>
           </div>
         </footer>
-      </div>
-    </>
-  );
-}
+     </>
+  )};

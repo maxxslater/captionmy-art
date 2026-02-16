@@ -1,0 +1,169 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+    binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User accounts
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  subscription  Subscription?
+  usage         Usage[]
+  gallery       GalleryItem[]
+  communityPosts CommunityPost[]
+  
+  @@map("users")
+}
+
+// Subscription/Membership tiers
+model Subscription {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  tier            Tier     @default(FREE)
+  status          SubscriptionStatus @default(ACTIVE)
+  
+  // Stripe integration
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?   @unique
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("subscriptions")
+}
+
+enum Tier {
+  FREE
+  PRO
+  PREMIUM
+  PLATINUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+}
+
+// Usage tracking for caption generation limits
+model Usage {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Track caption generations
+  captionsUsed Int     @default(0)
+  
+  // Track by period
+  periodStart DateTime
+  periodEnd   DateTime
+  
+  // What tier they were on during this period
+  tier        Tier
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId, periodStart, periodEnd])
+  @@map("usage")
+}
+
+// Gallery storage for Premium/Platinum users
+model GalleryItem {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Image data
+  imageUrl    String
+  imageKey    String   // Storage key for deletion
+  
+  // Caption data
+  caption     String   @db.Text
+  platforms   String[] // Array of platform IDs
+  
+  // Metadata
+  medium      String?
+  artStyle    String?
+  tone        String?
+  mood        String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId, createdAt])
+  @@map("gallery_items")
+}
+
+// Community posts (Pro+ feature)
+model CommunityPost {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Post content
+  imageUrl    String
+  caption     String   @db.Text
+  description String?  @db.Text  // User's story about success
+  
+  // Engagement
+  likes       Int      @default(0)
+  views       Int      @default(0)
+  
+  // Moderation
+  published   Boolean  @default(false)
+  flagged     Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId, published, createdAt])
+  @@map("community_posts")
+}
+
+// Password reset tokens
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([email, token])
+  @@map("password_reset_tokens")
+}
+
+// Session management
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId, token])
+  @@map("sessions")
+}
