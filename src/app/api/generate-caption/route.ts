@@ -55,7 +55,7 @@ Make it poetic, promotional, and artist-voiced. Include relevant emojis, 8-12 ta
 
   // Claude call
 const claudeResponse = await anthropic.messages.create({
-  model: 'claude-3-5-sonnet-20241022',
+  model: 'claude-sonnet-4-5-20250929',
   max_tokens: 300,
   messages: [{ role: 'user', content: prompt }],
 });
