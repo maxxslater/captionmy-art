@@ -23,11 +23,13 @@ export default function Home() {
   });
 
   const handleGenerate = async () => {
+   console.log('handleGenerate started');  
     if (!image) return;
     setLoading(true);
     setError(null);
 
     try {
+     console.log('Starting reader for base64');  // ← add 
       // For MVP: Convert image to base64 and send directly (no Supabase upload yet)
       const reader = new FileReader();
       reader.onloadend = async () => {
@@ -41,6 +43,8 @@ export default function Home() {
             // Add later: goal, tone, format, lang, etc.
           }),
         });
+
+        console.log('Fetch response status:', res.status);  // ← add
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to generate');
@@ -78,7 +82,7 @@ export default function Home() {
       {image && (
         <button
           onClick={handleGenerate}
-          disabled={loading}
+          disabled={loading || !image}
           className="mt-6 px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-xl font-semibold disabled:opacity-50"
         >
           {loading ? 'Generating...' : 'Generate Caption'}
