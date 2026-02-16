@@ -44,6 +44,25 @@ export default function Home() {
     PLATINUM: { limit: 999999, period: 'month', maxPlatforms: 999, badge: '◆', color: '#E5C278' },
   };
 
+  const theme = {
+    bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAFAF8]',
+    cardBg: darkMode ? 'bg-[#1A1A1A]' : 'bg-white',
+    headerBg: darkMode ? 'bg-[#1A1A1A]/80' : 'bg-white/80',
+    text: darkMode ? 'text-[#E5E5E5]' : 'text-[#1A1A1A]',
+    textSecondary: darkMode ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]',
+    textTertiary: darkMode ? 'text-[#707070]' : 'text-[#9B9B9B]',
+    border: darkMode ? 'border-[#2A2A2A]' : 'border-gray-200',
+    borderHover: darkMode ? 'border-[#3A3A3A]' : 'border-gray-400',
+    inputBorder: darkMode ? 'border-[#2A2A2A]' : 'border-gray-300',
+    inputBg: darkMode ? 'bg-[#1A1A1A]' : 'bg-white',
+    buttonBg: darkMode ? 'bg-[#E5E5E5]' : 'bg-[#1A1A1A]',
+    buttonText: darkMode ? 'text-[#0A0A0A]' : 'text-white',
+    buttonHover: darkMode ? 'bg-white' : 'bg-black',
+    accent: darkMode ? '#E5C278' : '#D4AF37',
+    selectedBg: darkMode ? 'bg-[#E5E5E5]' : 'bg-[#1A1A1A]',
+    selectedText: darkMode ? 'text-[#0A0A0A]' : 'text-white',
+  };
+
   // Check auth on mount
   useEffect(() => {
     checkUser();
@@ -60,7 +79,6 @@ export default function Home() {
 
       setUser(session.user);
 
-      // Get subscription
       const { data: sub } = await supabase
         .from('subscriptions')
         .select('tier')
@@ -71,7 +89,6 @@ export default function Home() {
         setTier(sub.tier);
       }
 
-      // Get usage for current period
       await fetchUsage(session.user.id, sub?.tier || 'FREE');
       
     } catch (err) {
@@ -89,7 +106,6 @@ export default function Home() {
     let periodEnd = new Date();
 
     if (config.period === 'week') {
-      // Start of week (Monday)
       const day = periodStart.getDay();
       const diff = periodStart.getDate() - day + (day === 0 ? -6 : 1);
       periodStart.setDate(diff);
@@ -98,7 +114,6 @@ export default function Home() {
       periodEnd.setDate(periodStart.getDate() + 6);
       periodEnd.setHours(23, 59, 59, 999);
     } else {
-      // Start of month
       periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
       periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       periodEnd.setHours(23, 59, 59, 999);
@@ -116,7 +131,6 @@ export default function Home() {
     if (data) {
       setUsageData(data);
     } else {
-      // Create usage record if doesn't exist
       const { data: newUsage } = await supabase
         .from('usage')
         .insert({
@@ -156,10 +170,8 @@ export default function Home() {
     const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
     
     if (tier === 'FREE' && selectedPlatforms.includes(platformId)) {
-      // Allow deselecting
       setSelectedPlatforms([]);
     } else if (tier === 'FREE' && selectedPlatforms.length >= config.maxPlatforms) {
-      // Show upgrade message
       setError('Free tier limited to 1 platform. Upgrade to select multiple!');
       return;
     } else {
@@ -177,7 +189,6 @@ export default function Home() {
 
     const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
     
-    // Check usage limits
     if (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit) {
       setError(`You've used all ${config.limit} captions this ${config.period}. Upgrade for more!`);
       return;
@@ -197,20 +208,8 @@ export default function Home() {
             imageBase64: base64Image,
             platforms: selectedPlatforms,
             formData: {
-              medium,
-              artStyle,
-              tone,
-              mood,
-              audience,
-              subject,
-              customContext,
-              options: {
-                includeProcess,
-                includeHashtags,
-                includeCTA,
-                includeEmoji,
-                seoOptimized,
-              }
+              medium, artStyle, tone, mood, audience, subject, customContext,
+              options: { includeProcess, includeHashtags, includeCTA, includeEmoji, seoOptimized }
             }
           }),
         });
@@ -218,7 +217,6 @@ export default function Home() {
         if (!res.ok) throw new Error(data.error || 'Failed to generate');
         setCaption(data.caption);
 
-        // Update usage
         if (usageData) {
           await supabase
             .from('usage')
@@ -243,25 +241,6 @@ export default function Home() {
 
   const canGenerate = image && selectedPlatforms.length > 0 && medium;
 
-  const theme = {
-    bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAFAF8]',
-    cardBg: darkMode ? 'bg-[#1A1A1A]' : 'bg-white',
-    headerBg: darkMode ? 'bg-[#1A1A1A]/80' : 'bg-white/80',
-    text: darkMode ? 'text-[#E5E5E5]' : 'text-[#1A1A1A]',
-    textSecondary: darkMode ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]',
-    textTertiary: darkMode ? 'text-[#707070]' : 'text-[#9B9B9B]',
-    border: darkMode ? 'border-[#2A2A2A]' : 'border-gray-200',
-    borderHover: darkMode ? 'border-[#3A3A3A]' : 'border-gray-400',
-    inputBorder: darkMode ? 'border-[#2A2A2A]' : 'border-gray-300',
-    inputBg: darkMode ? 'bg-[#1A1A1A]' : 'bg-white',
-    buttonBg: darkMode ? 'bg-[#E5E5E5]' : 'bg-[#1A1A1A]',
-    buttonText: darkMode ? 'text-[#0A0A0A]' : 'text-white',
-    buttonHover: darkMode ? 'bg-white' : 'bg-black',
-    accent: darkMode ? '#E5C278' : '#D4AF37',
-    selectedBg: darkMode ? 'bg-[#E5E5E5]' : 'bg-[#1A1A1A]',
-    selectedText: darkMode ? 'text-[#0A0A0A]' : 'text-white',
-  };
-
   if (loading) {
     return (
       <div className={`min-h-screen ${theme.bg} flex items-center justify-center`}>
@@ -277,19 +256,8 @@ export default function Home() {
     <>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap');
-        
-        * {
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        
-        h1, h2, h3 {
-          font-family: 'Playfair Display', serif;
-        }
-
-        .brush-stroke {
-          position: relative;
-        }
-        
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        h1, h2, h3 { font-family: 'Playfair Display', serif; }
         .brush-stroke::after {
           content: '';
           position: absolute;
@@ -297,86 +265,43 @@ export default function Home() {
           left: 0;
           right: 0;
           height: 3px;
-          background: linear-gradient(90deg, 
-            transparent 0%,
-            ${theme.accent} 20%,
-            ${theme.accent} 80%,
-            transparent 100%
-          );
-        }
-
-        .art-texture {
-          background-image: 
-            repeating-linear-gradient(0deg, transparent, transparent 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 4px),
-            repeating-linear-gradient(90deg, transparent, transparent 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 2px, ${darkMode ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)'} 4px);
+          background: linear-gradient(90deg, transparent 0%, ${theme.accent} 20%, ${theme.accent} 80%, transparent 100%);
         }
       `}</style>
 
       <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-        {/* Subtle texture overlay */}
-        <div className="fixed inset-0 opacity-[0.015] pointer-events-none art-texture"></div>
-
-        {/* Header */}
         <header className={`relative ${theme.border} border-b ${theme.headerBg} backdrop-blur-sm`}>
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <div className="flex items-baseline justify-between">
-              <div className="flex items-baseline gap-3">
-                <h1 className={`text-5xl md:text-6xl font-light tracking-tight ${theme.text}`}>
+          <div className="max-w-7xl mx-auto px-6 py-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <h1 className={`text-4xl md:text-5xl font-light tracking-tight ${theme.text}`}>
                   Caption<span className="font-semibold">My.Art</span>
                 </h1>
-                <div className="h-2 w-2 rounded-full mt-4" style={{ backgroundColor: theme.accent }}></div>
-                </div>
-                </div>
-                
-                </div>
-                </header>
-                {/* Tier Badge */}
-                <div className="ml-4 mt-4 flex items-center gap-2 px-3 py-1 rounded-full border-2" style={{ borderColor: config.color }}>
-                  <span style={{ color: config.color }} className="text-xl">{config.badge}</span>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full border-2" style={{ borderColor: config.color }}>
+                  <span style={{ color: config.color }} className="text-lg">{config.badge}</span>
                   <span className={`text-xs uppercase tracking-wider font-medium ${theme.text}`}>{tier}</span>
                 </div>
               </div>
               
-              
-              {/* Navigation */}
-              <div className="flex items-center gap-6">
-                {/* Usage Display */}
+              <div className="flex items-center gap-4">
                 <div className={`text-xs ${theme.textSecondary} font-medium`}>
                   {usageRemaining} / {tier === 'PLATINUM' ? '∞' : config.limit} this {config.period}
                 </div>
-                
-                <Link 
-                  href="/pricing" 
-                  className={`text-sm ${theme.textSecondary} hover:${theme.text} transition font-medium tracking-wide`}
-                >
+                <Link href="/pricing" className={`text-sm ${theme.textSecondary} hover:${theme.text} transition`}>
                   {tier === 'FREE' ? 'Upgrade' : 'Pricing'}
                 </Link>
-                
-                <button
-                  onClick={handleSignOut}
-                  className={`text-sm ${theme.textSecondary} hover:${theme.text} transition font-medium tracking-wide`}
-                >
+                <button onClick={handleSignOut} className={`text-sm ${theme.textSecondary} hover:${theme.text} transition`}>
                   Sign Out
                 </button>
-                
-                <button
-                  onClick={() => setDarkMode(!darkMode)}
-                  className={`theme-toggle p-3 ${theme.inputBg} ${theme.inputBorder} border-2 rounded-sm hover:${theme.borderHover} flex items-center gap-2`}
-                  aria-label="Toggle theme"
-                >
+                <button onClick={() => setDarkMode(!darkMode)} className={`p-2 ${theme.inputBg} ${theme.inputBorder} border-2 rounded-sm`}>
                   <span className="text-xl">{darkMode ? '☀' : '☾'}</span>
                 </button>
               </div>
-            <p className={`mt-3 ${theme.textSecondary} text-lg font-light tracking-wide`}>
-              Elevate your art with intelligent, platform-optimized captions
-            </p>
-          )
+            </div>
+          </div>
+        </header>
 
-         
-        {/* Main Content */}
-        
-          
-          {/* Upgrade Banner (if near limit) */}
+        <main className="relative max-w-7xl mx-auto px-6 py-12">
           {tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit - 1 && (
             <div className="mb-8 p-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg">
               <div className="flex items-center justify-between">
@@ -387,417 +312,228 @@ export default function Home() {
                   <p className="text-sm text-gray-700 mt-1">
                     {usageData.captions_used >= config.limit 
                       ? `You've used all ${config.limit} captions this ${config.period}`
-                      : `Only ${config.limit - usageData.captions_used} caption${config.limit - usageData.captions_used > 1 ? 's' : ''} left this ${config.period}`
+                      : `Only ${config.limit - usageData.captions_used} caption left`
                     }
                   </p>
                 </div>
-                <Link 
-                  href="/pricing"
-                  className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-black transition"
-                >
+                <Link href="/pricing" className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-black transition">
                   Upgrade Now
                 </Link>
               </div>
             </div>
           )}
 
-          {/* Upload Section */}
-          <section className="mb-16">
-            <h2 className={`text-3xl font-light ${theme.text} mb-6 brush-stroke inline-block`}>
-              Your Artwork
-            </h2>
-            
-            <div className={`mt-8 ${theme.cardBg} border-2 border-dashed ${theme.inputBorder} rounded-sm hover:${theme.borderHover} transition-colors`}>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-                id="file-upload"
-              />
-              
+          <section className="mb-12">
+            <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Upload Artwork</h2>
+            <div className={`${theme.cardBg} border-2 border-dashed ${theme.inputBorder} rounded-sm p-8`}>
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" id="file-upload" />
               {imagePreview ? (
-                <div className="relative p-8">
-                  <img
-                    src={imagePreview}
-                    alt="Your artwork"
-                    className="max-h-125 mx-auto shadow-2xl"
-                  />
-                  <button
-                    onClick={() => {
-                      setImage(null);
-                      setImagePreview(null);
-                    }}
-                    className={`absolute top-12 right-12 ${darkMode ? 'bg-white/90 hover:bg-white text-black' : 'bg-black/80 hover:bg-black text-white'} rounded-full w-10 h-10 flex items-center justify-center text-lg backdrop-blur-sm transition`}
-                  >
-                    ×
-                  </button>
+                <div className="relative">
+                  <img src={imagePreview} alt="Preview" className="max-h-96 mx-auto rounded" />
+                  <button onClick={() => { setImage(null); setImagePreview(null); }}
+                    className="absolute top-2 right-2 bg-black/80 text-white rounded-full w-8 h-8">×</button>
                 </div>
               ) : (
-                <label htmlFor="file-upload" className="cursor-pointer block p-20 text-center">
-                  <div className={`inline-block mb-4 text-6xl font-light ${theme.textTertiary}`}>+</div>
-                  <p className={`text-xl font-light ${theme.textSecondary} mb-2`}>Upload your artwork</p>
-                  <p className={`text-sm ${theme.textTertiary} font-light tracking-wide`}>
-                    JPG, PNG, GIF, or WEBP • Maximum 10MB
-                  </p>
+                <label htmlFor="file-upload" className="cursor-pointer block text-center py-12">
+                  <div className={`text-5xl mb-4 ${theme.textTertiary}`}>+</div>
+                  <p className={theme.textSecondary}>Click to upload</p>
                 </label>
               )}
             </div>
           </section>
 
-          {/* Platform Selection */}
-          <section className="mb-16">
-            <h2 className={`text-3xl font-light ${theme.text} mb-2 brush-stroke inline-block`}>
-              Platforms
-            </h2>
+          <section className="mb-12">
+            <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Platforms</h2>
             {tier === 'FREE' && (
-              <p className={`text-sm ${theme.textTertiary} mt-6 mb-8 font-light`}>
-                Free tier: Select 1 platform • <Link href="/pricing" className="underline hover:opacity-80">Upgrade</Link> for multiple platforms
+              <p className={`text-sm ${theme.textTertiary} mb-4`}>
+                Free tier: 1 platform only • <Link href="/pricing" className="underline">Upgrade</Link> for more
               </p>
             )}
-            
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-8">
-              {platforms.map((platform) => (
-                <button
-                  key={platform.id}
-                  type="button"
-                  onClick={() => togglePlatform(platform.id)}
-                  disabled={tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(platform.id)}
-                  className={`
-                    platform-btn relative px-6 py-5 ${theme.cardBg} border-2 rounded-sm text-center transition-all
-                    ${
-                      selectedPlatforms.includes(platform.id)
-                        ? `${theme.inputBorder.replace('border-', 'border-[#')} ${theme.selectedBg} ${theme.selectedText} selected`
-                        : `${theme.inputBorder} ${theme.textSecondary} hover:${theme.borderHover}`
-                    }
-                    ${tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(platform.id) ? 'opacity-50 cursor-not-allowed' : ''}
-                  `}
-                >
-                  <div className="text-2xl mb-2 font-light">{platform.icon}</div>
-                  <div className="text-xs tracking-wider uppercase font-medium">{platform.name}</div>
-                  {selectedPlatforms.includes(platform.id) && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.accent }}>
-                      <span className={`text-[10px] ${darkMode ? 'text-black' : 'text-black'}`}>✓</span>
-                    </div>
-                  )}
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+              {platforms.map((p) => (
+                <button key={p.id} onClick={() => togglePlatform(p.id)}
+                  disabled={tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(p.id)}
+                  className={`p-4 border-2 rounded-sm ${
+                    selectedPlatforms.includes(p.id) ? `${theme.selectedBg} ${theme.selectedText}` : `${theme.cardBg} ${theme.inputBorder}`
+                  } ${tier === 'FREE' && selectedPlatforms.length >= 1 && !selectedPlatforms.includes(p.id) ? 'opacity-50' : ''}`}>
+                  <div className="text-xl mb-1">{p.icon}</div>
+                  <div className="text-xs">{p.name}</div>
                 </button>
               ))}
             </div>
           </section>
 
-          {/* Art Details */}
-          <section className="mb-16">
-            <h2 className={`text-3xl font-light ${theme.text} mb-2 brush-stroke inline-block`}>
-              Details
-            </h2>
-            <p className={`text-sm ${theme.textTertiary} mt-6 mb-8 font-light`}>
-              Help us understand your work
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section className="mb-12">
+            <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Details</h2>
+            <div className="grid md:grid-cols-2 gap-4">
               {/* Medium */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Medium <span style={{ color: theme.accent }}>*</span>
-                </label>
-                <select
-                  value={medium}
-                  onChange={(e) => setMedium(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select medium</option>
-                  <option value="digital">Digital Art</option>
-                  <option value="oil">Oil Painting</option>
-                  <option value="watercolor">Watercolor</option>
-                  <option value="acrylic">Acrylic</option>
-                  <option value="pencil">Pencil / Graphite</option>
-                  <option value="ink">Ink</option>
-                  <option value="charcoal">Charcoal</option>
-                  <option value="pastel">Pastel</option>
-                  <option value="mixed-media">Mixed Media</option>
-                  <option value="3d">3D Art</option>
-                  <option value="sculpture">Sculpture</option>
-                  <option value="photography">Photography</option>
-                  <option value="collage">Collage</option>
-                  <option value="pixel-art">Pixel Art</option>
-                  <option value="vector">Vector Art</option>
-                </select>
-              </div>
+              <select value={medium} onChange={(e) => setMedium(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Medium *</option>
+                <option value="digital">Digital Art</option>
+                <option value="oil">Oil Painting</option>
+                <option value="watercolor">Watercolor</option>
+                <option value="acrylic">Acrylic</option>
+                <option value="pencil">Pencil / Graphite</option>
+                <option value="ink">Ink</option>
+                <option value="charcoal">Charcoal</option>
+                <option value="pastel">Pastel</option>
+                <option value="mixed-media">Mixed Media</option>
+                <option value="3d">3D Art</option>
+                <option value="sculpture">Sculpture</option>
+                <option value="photography">Photography</option>
+                <option value="collage">Collage</option>
+                <option value="pixel-art">Pixel Art</option>
+                <option value="vector">Vector Art</option>
+              </select>
 
               {/* Art Style */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Style
-                </label>
-                <select
-                  value={artStyle}
-                  onChange={(e) => setArtStyle(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select style</option>
-                  <option value="realism">Realism</option>
-                  <option value="abstract">Abstract</option>
-                  <option value="impressionism">Impressionism</option>
-                  <option value="surrealism">Surrealism</option>
-                  <option value="anime">Anime / Manga</option>
-                  <option value="cartoon">Cartoon</option>
-                  <option value="concept-art">Concept Art</option>
-                  <option value="fantasy">Fantasy</option>
-                  <option value="sci-fi">Science Fiction</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                  <option value="still-life">Still Life</option>
-                  <option value="minimalist">Minimalist</option>
-                  <option value="pop-art">Pop Art</option>
-                  <option value="street-art">Street Art</option>
-                  <option value="gothic">Gothic</option>
-                  <option value="cyberpunk">Cyberpunk</option>
-                </select>
-              </div>
+              <select value={artStyle} onChange={(e) => setArtStyle(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Style</option>
+                <option value="realism">Realism</option>
+                <option value="abstract">Abstract</option>
+                <option value="impressionism">Impressionism</option>
+                <option value="surrealism">Surrealism</option>
+                <option value="anime">Anime / Manga</option>
+                <option value="cartoon">Cartoon</option>
+                <option value="concept-art">Concept Art</option>
+                <option value="fantasy">Fantasy</option>
+                <option value="sci-fi">Science Fiction</option>
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
+                <option value="still-life">Still Life</option>
+                <option value="minimalist">Minimalist</option>
+                <option value="pop-art">Pop Art</option>
+                <option value="street-art">Street Art</option>
+                <option value="gothic">Gothic</option>
+                <option value="cyberpunk">Cyberpunk</option>
+              </select>
 
               {/* Tone */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Tone
-                </label>
-                <select
-                  value={tone}
-                  onChange={(e) => setTone(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select tone</option>
-                  <option value="professional">Professional</option>
-                  <option value="casual">Casual</option>
-                  <option value="playful">Playful</option>
-                  <option value="inspirational">Inspirational</option>
-                  <option value="storytelling">Storytelling</option>
-                  <option value="minimalist">Minimalist</option>
-                  <option value="educational">Educational</option>
-                  <option value="provocative">Provocative</option>
-                  <option value="humble">Humble</option>
-                  <option value="confident">Confident</option>
-                </select>
-              </div>
+              <select value={tone} onChange={(e) => setTone(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Tone</option>
+                <option value="professional">Professional</option>
+                <option value="casual">Casual</option>
+                <option value="playful">Playful</option>
+                <option value="inspirational">Inspirational</option>
+                <option value="storytelling">Storytelling</option>
+                <option value="minimalist">Minimalist</option>
+                <option value="educational">Educational</option>
+                <option value="provocative">Provocative</option>
+                <option value="humble">Humble</option>
+                <option value="confident">Confident</option>
+              </select>
 
               {/* Mood */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Mood
-                </label>
-                <select
-                  value={mood}
-                  onChange={(e) => setMood(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select mood</option>
-                  <option value="dreamy">Dreamy</option>
-                  <option value="bold">Bold</option>
-                  <option value="melancholic">Melancholic</option>
-                  <option value="energetic">Energetic</option>
-                  <option value="peaceful">Peaceful</option>
-                  <option value="dark">Dark</option>
-                  <option value="whimsical">Whimsical</option>
-                  <option value="mysterious">Mysterious</option>
-                  <option value="joyful">Joyful</option>
-                  <option value="nostalgic">Nostalgic</option>
-                </select>
-              </div>
+              <select value={mood} onChange={(e) => setMood(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Mood</option>
+                <option value="dreamy">Dreamy</option>
+                <option value="bold">Bold</option>
+                <option value="melancholic">Melancholic</option>
+                <option value="energetic">Energetic</option>
+                <option value="peaceful">Peaceful</option>
+                <option value="dark">Dark</option>
+                <option value="whimsical">Whimsical</option>
+                <option value="mysterious">Mysterious</option>
+                <option value="joyful">Joyful</option>
+                <option value="nostalgic">Nostalgic</option>
+              </select>
 
-              {/* Target Audience */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Audience
-                </label>
-                <select
-                  value={audience}
-                  onChange={(e) => setAudience(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select audience</option>
-                  <option value="collectors">Art Collectors</option>
-                  <option value="artists">Fellow Artists</option>
-                  <option value="general">General Audience</option>
-                  <option value="commissioners">Commissioners</option>
-                  <option value="fans">Fans & Followers</option>
-                  <option value="industry">Industry Professionals</option>
-                </select>
-              </div>
+              {/* Audience */}
+              <select value={audience} onChange={(e) => setAudience(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Audience</option>
+                <option value="collectors">Art Collectors</option>
+                <option value="artists">Fellow Artists</option>
+                <option value="general">General Audience</option>
+                <option value="commissioners">Commissioners</option>
+                <option value="fans">Fans & Followers</option>
+                <option value="industry">Industry Professionals</option>
+              </select>
 
-              {/* Subject Matter */}
-              <div>
-                <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                  Subject
-                </label>
-                <select
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} font-light`}
-                >
-                  <option value="">Select subject</option>
-                  <option value="character">Character / Person</option>
-                  <option value="creature">Creature / Monster</option>
-                  <option value="environment">Environment / Scene</option>
-                  <option value="object">Object / Product</option>
-                  <option value="nature">Nature</option>
-                  <option value="architecture">Architecture</option>
-                  <option value="vehicle">Vehicle</option>
-                  <option value="food">Food</option>
-                  <option value="abstract-concept">Abstract Concept</option>
-                  <option value="fan-art">Fan Art</option>
-                </select>
-              </div>
+              {/* Subject */}
+              <select value={subject} onChange={(e) => setSubject(e.target.value)}
+                className={`px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text}`}>
+                <option value="">Subject</option>
+                <option value="character">Character / Person</option>
+                <option value="creature">Creature / Monster</option>
+                <option value="environment">Environment / Scene</option>
+                <option value="object">Object / Product</option>
+                <option value="nature">Nature</option>
+                <option value="architecture">Architecture</option>
+                <option value="vehicle">Vehicle</option>
+                <option value="food">Food</option>
+                <option value="abstract-concept">Abstract Concept</option>
+                <option value="fan-art">Fan Art</option>
+              </select>
             </div>
 
             {/* Additional Context */}
-            <div className="mt-8">
-              <label className={`block text-xs uppercase tracking-wider ${theme.textSecondary} mb-3 font-medium`}>
-                Additional Context
-              </label>
-              <textarea
-                rows={4}
-                value={customContext}
-                onChange={(e) => setCustomContext(e.target.value)}
-                placeholder="Share the story behind your work, inspiration, techniques, or any details you'd like to include..."
-                className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} ${darkMode ? 'placeholder-gray-600' : 'placeholder-gray-400'} font-light resize-none`}
+            <div className="mt-6">
+              <textarea value={customContext} onChange={(e) => setCustomContext(e.target.value)}
+                rows={4} placeholder="Share the story behind your work..."
+                className={`w-full px-4 py-3 ${theme.inputBg} border-2 ${theme.inputBorder} rounded-sm ${theme.text} placeholder-gray-400 resize-none`}
               />
-              <p className={`text-xs ${theme.textTertiary} mt-2 font-light`}>{customContext.length} characters</p>
+              <p className={`text-xs ${theme.textTertiary} mt-1`}>{customContext.length} characters</p>
             </div>
           </section>
 
           {/* Caption Options */}
-          <section className="mb-16">
-            <h2 className={`text-3xl font-light ${theme.text} mb-2 brush-stroke inline-block`}>
-              Options
-            </h2>
-            <p className={`text-sm ${theme.textTertiary} mt-6 mb-8 font-light`}>
-              Customize your caption output
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeProcess}
-                  onChange={(e) => setIncludeProcess(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <span className={`text-sm ${theme.text} font-medium`}>Process Details</span>
-                  <p className={`text-xs ${theme.textTertiary} font-light mt-1`}>Include information about your creative process</p>
-                </div>
+          <section className="mb-12">
+            <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Options</h2>
+            <div className="grid md:grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={includeProcess} onChange={(e) => setIncludeProcess(e.target.checked)} />
+                <span className={`text-sm ${theme.text}`}>Process Details</span>
               </label>
-              
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeHashtags}
-                  onChange={(e) => setIncludeHashtags(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <span className={`text-sm ${theme.text} font-medium`}>Hashtags</span>
-                  <p className={`text-xs ${theme.textTertiary} font-light mt-1`}>Add relevant, trending hashtags</p>
-                </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={includeHashtags} onChange={(e) => setIncludeHashtags(e.target.checked)} />
+                <span className={`text-sm ${theme.text}`}>Hashtags</span>
               </label>
-              
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeCTA}
-                  onChange={(e) => setIncludeCTA(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <span className={`text-sm ${theme.text} font-medium`}>Call-to-Action</span>
-                  <p className={`text-xs ${theme.textTertiary} font-light mt-1`}>Encourage engagement from your audience</p>
-                </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={includeCTA} onChange={(e) => setIncludeCTA(e.target.checked)} />
+                <span className={`text-sm ${theme.text}`}>Call-to-Action</span>
               </label>
-              
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeEmoji}
-                  onChange={(e) => setIncludeEmoji(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <span className={`text-sm ${theme.text} font-medium`}>Emojis</span>
-                  <p className={`text-xs ${theme.textTertiary} font-light mt-1`}>Add expressive emojis where appropriate</p>
-                </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={includeEmoji} onChange={(e) => setIncludeEmoji(e.target.checked)} />
+                <span className={`text-sm ${theme.text}`}>Emojis</span>
               </label>
-              
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={seoOptimized}
-                  onChange={(e) => setSeoOptimized(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <span className={`text-sm ${theme.text} font-medium`}>SEO Optimization</span>
-                  <p className={`text-xs ${theme.textTertiary} font-light mt-1`}>Optimize for discoverability and search</p>
-                </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={seoOptimized} onChange={(e) => setSeoOptimized(e.target.checked)} />
+                <span className={`text-sm ${theme.text}`}>SEO Optimized</span>
               </label>
             </div>
           </section>
 
-          {/* Generate Button */}
-          <div className={`border-t ${theme.border} pt-12`}>
-            <button
-              onClick={handleGenerate}
-              disabled={generatingCaption || !canGenerate || (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit)}
-              className={`w-full md:w-auto px-12 py-4 ${theme.buttonBg} ${theme.buttonText} text-sm uppercase tracking-widest font-medium hover:${theme.buttonHover} disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 hover:tracking-[0.3em]`}
-            >
-              {generatingCaption ? 'Generating...' : 'Generate Caption'}
-            </button>
-            
-            {!canGenerate && image && (
-              <p className="text-sm mt-4 font-light" style={{ color: theme.accent }}>
-                Please select at least one platform and specify a medium
-              </p>
-            )}
-          </div>
+          <button onClick={handleGenerate}
+            disabled={generatingCaption || !canGenerate || (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit)}
+            className={`w-full px-12 py-4 ${theme.buttonBg} ${theme.buttonText} uppercase tracking-wider font-medium disabled:opacity-30`}>
+            {generatingCaption ? 'Generating...' : 'Generate Caption'}
+          </button>
 
-          {/* Error Display */}
           {error && (
-            <div className={`mt-12 p-6 ${darkMode ? 'bg-red-950/50 border-l-4 border-red-600' : 'bg-red-50 border-l-4 border-red-600'}`}>
-              <p className={`${darkMode ? 'text-red-300' : 'text-red-900'} font-light`}>{error}</p>
+            <div className="mt-6 p-4 bg-red-50 border-l-4 border-red-600">
+              <p className="text-red-900">{error}</p>
             </div>
           )}
 
-          {/* Caption Output */}
           {caption && (
-            <div className={`mt-16 border-t ${theme.border} pt-16`}>
-              <h2 className={`text-3xl font-light ${theme.text} mb-8 brush-stroke inline-block`}>
-                Your Caption
-              </h2>
-              
-              <div className={`${theme.cardBg} border-2 ${theme.inputBorder} p-8`}>
-                <pre className={`whitespace-pre-wrap font-light ${theme.text} leading-relaxed text-base`}>
-                  {caption}
-                </pre>
+            <div className="mt-12">
+              <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Your Caption</h2>
+              <div className={`${theme.cardBg} border-2 ${theme.inputBorder} p-6`}>
+                <pre className={`whitespace-pre-wrap ${theme.text}`}>{caption}</pre>
               </div>
-              
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(caption);
-                  alert('Caption copied to clipboard');
-                }}
-                className={`mt-6 px-8 py-3 border-2 ${theme.inputBorder} ${theme.text} text-xs uppercase tracking-widest font-medium hover:${theme.buttonBg} hover:${theme.buttonText} transition-all`}
-              >
+              <button onClick={() => navigator.clipboard.writeText(caption)}
+                className="mt-4 px-6 py-2 border-2 ${theme.inputBorder} ${theme.text}">
                 Copy to Clipboard
               </button>
             </div>
           )}
-        
-
-        {/* Footer */}
-        <footer className={`border-t ${theme.border} mt-24 py-8`}>
-          <div className="max-w-7xl mx-auto px-6 text-center">
-            <p className={`text-xs ${theme.textTertiary} tracking-wider uppercase font-light`}>
-              Crafted for Artists
-            </p>
-          </div>
-        </footer>
-     </>
-  )};
+        </main>
+      </div>
+    </>
+  );
+}

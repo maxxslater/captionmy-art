@@ -47,13 +47,17 @@ export default function SignInPage() {
         password,
       });
 
+       console.log('SIGNIN RESULT:', data); // ← ADD THIS
+    console.log('SIGNIN ERROR:', signInError); // ← ADD THIS
+
       if (signInError) throw signInError;
 
       if (data.user) {
-        // Redirect to home
+        console.log('USER SIGNED IN, REDIRECTING...'); // ← ADD THIS
         router.push('/');
       }
     } catch (err: any) {
+        console.error('CATCH ERROR:', err);
       setError(err.message || 'Invalid credentials');
     } finally {
       setLoading(false);
