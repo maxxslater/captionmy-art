@@ -1,84 +1,155 @@
+// app/api/generate-caption/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 
-export async function POST(req: NextRequest) {
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// Platform-specific guidelines
+const PLATFORM_SPECS = {
+  instagram: {
+    maxChars: 2200,
+    maxHashtags: 30,
+    style: 'Visual storytelling with emojis, engaging hooks, and community-building CTAs',
+  },
+  tiktok: {
+    maxChars: 300,
+    maxHashtags: 5,
+    style: 'Short, punchy, trend-aware with Gen Z appeal',
+  },
+  twitter: {
+    maxChars: 280,
+    maxHashtags: 3,
+    style: 'Concise, witty, conversation-starting',
+  },
+  reddit: {
+    maxChars: 40000,
+    maxHashtags: 0,
+    style: 'Authentic, detailed, community-focused without promotional tone',
+  },
+  artstation: {
+    maxChars: 5000,
+    maxHashtags: 10,
+    style: 'Professional, technical process details, industry-focused',
+  },
+  deviantart: {
+    maxChars: 5000,
+    maxHashtags: 15,
+    style: 'Creative community-oriented, inspirational, fellow artist connection',
+  },
+};
+
+export async function POST(request: NextRequest) {
   try {
-    // Instantiate here - only runs when route is hit
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
-    // Explicit check (good practice)
-    if (!openai.apiKey) {
-      throw new Error('Missing OPENAI_API_KEY - check .env.local or Vercel env vars');
-    }
-    if (!anthropic.apiKey) {
-      throw new Error('Missing ANTHROPIC_API_KEY - check .env.local or Vercel env vars');
-    }
-
-    const body = await req.json();
-    const { imageBase64 } = body;
+    const body = await request.json();
+    const { imageBase64, platforms = [], formData = {} } = body;
 
     if (!imageBase64) {
-      return NextResponse.json({ error: 'No image provided' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No image provided' },
+        { status: 400 }
+      );
     }
 
-    // Your vision analysis (GPT-4o)
-    const visionResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
+    if (platforms.length === 0) {
+      return NextResponse.json(
+        { error: 'No platforms selected' },
+        { status: 400 }
+      );
+    }
+
+    // Build the prompt
+    const platformSpecs = platforms.map((p: string) => {
+      const spec = PLATFORM_SPECS[p as keyof typeof PLATFORM_SPECS];
+      return `${p.toUpperCase()}: ${spec.style} (max ${spec.maxChars} chars, ${spec.maxHashtags} hashtags)`;
+    }).join('\n');
+
+    const prompt = `You are an expert social media caption writer for artists. Generate a compelling caption for this artwork.
+
+ARTWORK DETAILS:
+${formData.medium ? `Medium: ${formData.medium}` : ''}
+${formData.artStyle ? `Style: ${formData.artStyle}` : ''}
+${formData.tone ? `Tone: ${formData.tone}` : ''}
+${formData.mood ? `Mood: ${formData.mood}` : ''}
+${formData.audience ? `Target Audience: ${formData.audience}` : ''}
+${formData.subject ? `Subject: ${formData.subject}` : ''}
+${formData.customContext ? `Additional Context: ${formData.customContext}` : ''}
+
+PLATFORMS & GUIDELINES:
+${platformSpecs}
+
+CAPTION OPTIONS:
+${formData.options?.includeProcess ? '- Include details about the creative process' : ''}
+${formData.options?.includeHashtags ? '- Include relevant, trending hashtags' : ''}
+${formData.options?.includeCTA ? '- Include a call-to-action' : ''}
+${formData.options?.includeEmoji ? '- Use emojis strategically' : ''}
+${formData.options?.seoOptimized ? '- Optimize for discoverability and search' : ''}
+
+INSTRUCTIONS:
+1. Carefully and thoughtfully analyze the uploaded artwork
+2. The generated captions should not contain emoji's of any kind, unless specified.
+3. Captions should be intelligent, always.
+4. Never mention AI
+5. Captions should sound human, without using generic terms or phrases such as Dive In
+6. Always be as thoughtful as possible in generating the captions.
+7. Be specific about what makes THIS artwork special
+8. Avoid generic art buzzwords
+
+Generate the caption now:`;
+
+    // Call Claude API with vision
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 1024,
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Describe this artwork in vivid detail: style, subjects, colors, mood, composition, artistic influences. Be specific and creative.' },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: imageBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: prompt,
+            },
           ],
         },
       ],
-      max_tokens: 300,
     });
 
-    const imageDesc = visionResponse.choices?.[0]?.message?.content || 'No description generated.';
+    // Extract the caption from Claude's response
+    const caption = message.content[0].type === 'text' 
+      ? message.content[0].text 
+      : 'Unable to generate caption';
 
-    // Your Claude prompt & call
-    const prompt = `You are an expert social media caption writer for visual artists. 
-Based on this detailed description of the artwork: "${imageDesc}"
+    return NextResponse.json({
+      caption,
+      platforms,
+      usage: {
+        input_tokens: message.usage.input_tokens,
+        output_tokens: message.usage.output_tokens,
+      },
+    });
 
-Generate ONE engaging, ready-to-post Instagram caption. 
-Make it poetic, promotional, and artist-voiced. Include relevant emojis, 8-12 targeted hashtags at the end. Keep under 300 characters. End with a call-to-action like "What do you think?" or "Save for inspo!"`;
+  } catch (error: any) {
+    console.error('Caption generation error:', error);
+    
+    if (error.status === 401) {
+      return NextResponse.json(
+        { error: 'Invalid API key. Please check your Anthropic API key.' },
+        { status: 500 }
+      );
+    }
 
-  // Claude call
-const claudeResponse = await anthropic.messages.create({
-  model: 'claude-opus-4-6',
-  max_tokens: 300,
-  messages: [{ role: 'user', content: prompt }],
-});
-
-const textBlocks = claudeResponse.content.filter(
-  (block): block is TextBlock => block.type === 'text'
-);
-
-if (textBlocks.length === 0) {
-  throw new Error('Claude response contained no text blocks');
-}
-
-const caption = textBlocks
-  .map((block) => block.text)
-  .join('\n')
-  .trim();
-
-return NextResponse.json({ caption });
-} catch (error: any) {
-    console.error('Generation error:', error.message, error.stack);
     return NextResponse.json(
       { error: error.message || 'Failed to generate caption' },
       { status: 500 }
     );
   }
-};
+}

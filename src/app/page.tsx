@@ -18,7 +18,7 @@ export default function Home() {
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [generatingCaption, setGeneratingCaption] = useState(false);
-  const [caption, setCaption] = useState<string | null>(null);
+  const [captions, setCaptions] = useState<Array<{platform: string, caption: string}>>([]);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   
@@ -35,6 +35,7 @@ export default function Home() {
   const [includeCTA, setIncludeCTA] = useState(false);
   const [includeEmoji, setIncludeEmoji] = useState(false);
   const [seoOptimized, setSeoOptimized] = useState(true);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Tier configuration
   const TIER_CONFIG = {
@@ -100,59 +101,51 @@ export default function Home() {
   };
 
   const fetchUsage = async (userId: string, userTier: string) => {
-    const config = TIER_CONFIG[userTier as keyof typeof TIER_CONFIG];
+  // Just get the most recent usage record for this user and tier
+  // Don't filter by date - just get whatever exists
+  const { data, error } = await supabase
+    .from('usage')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('tier', userTier)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle(); // Use maybeSingle instead of single - won't error if not found
+
+  console.log('Usage fetch result:', data, error); // DEBUG
+
+  if (data) {
+    setUsageData(data);
+  } else {
+    // Create new usage record
     const now = new Date();
-    let periodStart = new Date();
-    let periodEnd = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const periodEnd = new Date(periodStart);
+    periodEnd.setDate(periodEnd.getDate() + 7);
 
-    if (config.period === 'week') {
-      const day = periodStart.getDay();
-      const diff = periodStart.getDate() - day + (day === 0 ? -6 : 1);
-      periodStart.setDate(diff);
-      periodStart.setHours(0, 0, 0, 0);
-      periodEnd = new Date(periodStart);
-      periodEnd.setDate(periodStart.getDate() + 6);
-      periodEnd.setHours(23, 59, 59, 999);
-    } else {
-      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      periodEnd.setHours(23, 59, 59, 999);
-    }
-
-    const { data } = await supabase
+    const { data: newUsage } = await supabase
       .from('usage')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('tier', userTier)
-      .gte('period_start', periodStart.toISOString())
-      .lte('period_end', periodEnd.toISOString())
+      .insert({
+        user_id: userId,
+        tier: userTier,
+        captions_used: 0,
+        period_start: periodStart.toISOString(),
+        period_end: periodEnd.toISOString(),
+      })
+      .select()
       .single();
-
-    if (data) {
-      setUsageData(data);
-    } else {
-      const { data: newUsage } = await supabase
-        .from('usage')
-        .insert({
-          user_id: userId,
-          tier: userTier,
-          captions_used: 0,
-          period_start: periodStart.toISOString(),
-          period_end: periodEnd.toISOString(),
-        })
-        .select()
-        .single();
-      
-      setUsageData(newUsage);
-    }
-  };
+    
+    console.log('Created new usage:', newUsage); // DEBUG
+    setUsageData(newUsage);
+  }
+};
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setImage(file);
       setImagePreview(URL.createObjectURL(file));
-      setCaption(null);
+      setCaptions([]);
       setError(null);
     }
   };
@@ -183,56 +176,96 @@ export default function Home() {
       setError(null);
     }
   };
+const handleGenerate = async () => {
+  if (!image || !user) return;
 
-  const handleGenerate = async () => {
-    if (!image || !user) return;
-
-    const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
-    
-    if (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit) {
-      setError(`You've used all ${config.limit} captions this ${config.period}. Upgrade for more!`);
-      return;
-    }
-    
-    setGeneratingCaption(true);
-    setError(null);
-    
+  const config = TIER_CONFIG[tier as keyof typeof TIER_CONFIG];
+  
+  console.log('Usage check:', {
+    tier,
+    captionsUsed: usageData?.captions_used,
+    limit: config.limit,
+    willBlock: tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit
+  });
+  
+  if (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit) {
+    setShowUpgradeModal(true);
+    return;
+  }
+  
+  setGeneratingCaption(true);
+  setError(null);
+  
+  const reader = new FileReader();
+  reader.onloadend = async () => {
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Image = (reader.result as string).split(',')[1];
-        const res = await fetch('/api/generate-caption', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: base64Image,
-            platforms: selectedPlatforms,
-            formData: {
-              medium, artStyle, tone, mood, audience, subject, customContext,
-              options: { includeProcess, includeHashtags, includeCTA, includeEmoji, seoOptimized }
-            }
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to generate');
-        setCaption(data.caption);
+      const base64Image = (reader.result as string).split(',')[1];
+      
+      const res = await fetch('/api/generate-caption', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: base64Image,
+          platforms: selectedPlatforms,
+          formData: {
+            medium, artStyle, tone, mood, audience, subject, customContext,
+            options: { includeProcess, includeHashtags, includeCTA, includeEmoji, seoOptimized }
+          }
+        }),
+      });
 
-        if (usageData) {
-          await supabase
-            .from('usage')
-            .update({ captions_used: usageData.captions_used + 1 })
-            .eq('id', usageData.id);
-          
-          setUsageData({ ...usageData, captions_used: usageData.captions_used + 1 });
-        }
-      };
-      reader.readAsDataURL(image);
+      const responseData = await res.json();
+      
+      if (!res.ok) throw new Error(responseData.error || 'Failed to generate');
+
+      if (responseData.captions && Array.isArray(responseData.captions)) {
+        setCaptions(responseData.captions);
+      } else if (responseData.caption) {
+        setCaptions([{ platform: selectedPlatforms[0] || 'instagram', caption: responseData.caption }]);
+      } else {
+        throw new Error('No caption returned');
+      }
+
+      if (usageData) {
+  await supabase
+    .from('usage')
+    .update({ 
+      captions_used: usageData.captions_used + 1,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', usageData.id);
+  
+  setUsageData({ ...usageData, captions_used: usageData.captions_used + 1 });
+} else {
+  // Create new record if doesn't exist
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const periodEnd = new Date(periodStart);
+  periodEnd.setDate(periodEnd.getDate() + 7);
+
+  const { data: newUsage } = await supabase
+    .from('usage')
+    .insert({
+      user_id: user.id,
+      tier: tier,
+      captions_used: 1,
+      period_start: periodStart.toISOString(),
+      period_end: periodEnd.toISOString(),
+    })
+    .select()
+    .single();
+  
+  setUsageData(newUsage);
+}
+
     } catch (err: any) {
       setError(err.message);
     } finally {
       setGeneratingCaption(false);
     }
   };
+  reader.readAsDataURL(image);
+};
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -508,11 +541,20 @@ export default function Home() {
             </div>
           </section>
 
-          <button onClick={handleGenerate}
-            disabled={generatingCaption || !canGenerate || (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit)}
-            className={`w-full px-12 py-4 ${theme.buttonBg} ${theme.buttonText} uppercase tracking-wider font-medium disabled:opacity-30`}>
-            {generatingCaption ? 'Generating...' : 'Generate Caption'}
-          </button>
+          <button 
+  onClick={handleGenerate}
+  disabled={generatingCaption || !canGenerate || (tier !== 'PLATINUM' && usageData && usageData.captions_used >= config.limit)}
+  className={`w-full px-12 py-4 ${theme.buttonBg} ${theme.buttonText} uppercase tracking-wider font-medium disabled:opacity-30`}>
+  {generatingCaption ? (
+    <span className="flex items-center justify-center gap-3">
+      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>Generating Caption...</span>
+    </span>
+  ) : 'Generate Caption'}
+</button>
 
           {error && (
             <div className="mt-6 p-4 bg-red-50 border-l-4 border-red-600">
@@ -520,19 +562,126 @@ export default function Home() {
             </div>
           )}
 
-          {caption && (
+          {captions.length > 0 && (
             <div className="mt-12">
-              <h2 className={`text-2xl font-light ${theme.text} mb-4`}>Your Caption</h2>
-              <div className={`${theme.cardBg} border-2 ${theme.inputBorder} p-6`}>
-                <pre className={`whitespace-pre-wrap ${theme.text}`}>{caption}</pre>
+              <h2 className={`text-3xl font-light ${theme.text} mb-6`}>
+                Your {captions.length > 1 ? 'Platform-Specific Captions' : 'Caption'}
+              </h2>
+              
+              <div className="space-y-6">
+                {captions.map((item, index) => {
+                  const platformInfo = platforms.find(p => p.id === item.platform);
+                  return (
+                    <div key={index} className={`${theme.cardBg} border-2 ${theme.inputBorder} rounded-sm overflow-hidden`}>
+                      {/* Platform Header */}
+                      <div className={`px-6 py-4 border-b-2 ${theme.inputBorder} flex items-center justify-between`} style={{ backgroundColor: darkMode ? '#0F0F0F' : '#F9F9F9' }}>
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{platformInfo?.icon}</span>
+                          <div>
+                            <h3 className={`font-medium ${theme.text}`}>{platformInfo?.name}</h3>
+                            <p className={`text-xs ${theme.textTertiary}`}>Optimized for {item.platform}</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(item.caption);
+                            alert(`${platformInfo?.name} caption copied!`);
+                          }}
+                          className={`px-4 py-2 border-2 ${theme.inputBorder} ${theme.text} text-xs uppercase tracking-wider font-medium rounded-sm hover:${theme.buttonBg} hover:${theme.buttonText} transition`}>
+                          Copy
+                        </button>
+                      </div>
+                      
+                      {/* Caption Content */}
+                      <div className="p-6">
+                        <pre className={`whitespace-pre-wrap ${theme.text} font-light leading-relaxed text-sm`}>
+                          {item.caption}
+                        </pre>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <button onClick={() => navigator.clipboard.writeText(caption)}
-                className="mt-4 px-6 py-2 border-2 ${theme.inputBorder} ${theme.text}">
-                Copy to Clipboard
-              </button>
+
+              {/* Copy All Button */}
+              {captions.length > 1 && (
+                <button 
+                  onClick={() => {
+                    const allCaptions = captions.map(c => {
+                      const p = platforms.find(pl => pl.id === c.platform);
+                      return `━━━━━ ${p?.name.toUpperCase()} ━━━━━\n\n${c.caption}\n\n`;
+                    }).join('\n');
+                    navigator.clipboard.writeText(allCaptions);
+                    alert('All captions copied to clipboard!');
+                  }}
+                  className={`mt-6 px-8 py-3 ${theme.buttonBg} ${theme.buttonText} text-xs uppercase tracking-widest font-medium rounded-sm hover:opacity-90 transition`}>
+                  Copy All Captions
+                </button>
+              )}
             </div>
           )}
         </main>
+
+        {/* Upgrade Modal */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={() => setShowUpgradeModal(false)}>
+            <div className={`${theme.cardBg} max-w-lg w-full rounded-lg p-8 border-2`} style={{ borderColor: theme.accent }} onClick={(e) => e.stopPropagation()}>
+              {/* Close button */}
+              <button onClick={() => setShowUpgradeModal(false)} className={`absolute top-4 right-4 ${theme.textSecondary} hover:${theme.text} text-2xl`}>
+                ×
+              </button>
+
+              {/* Icon */}
+              <div className="text-center mb-6">
+                <div className="text-6xl mb-4">🎯</div>
+                <h2 className={`text-3xl font-light ${theme.text} mb-2`}>You've Hit Your Limit!</h2>
+                <p className={`text-lg ${theme.textSecondary}`}>
+                  You've used all <span className="font-semibold">{config.limit} captions</span> this {config.period}
+                </p>
+              </div>
+
+              {/* Benefits */}
+              <div className={`${theme.inputBg} border-2 ${theme.inputBorder} rounded-lg p-6 mb-6`}>
+                <p className={`text-sm ${theme.textSecondary} mb-4 font-medium uppercase tracking-wider`}>Upgrade to get:</p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: theme.accent }}>✓</span>
+                    <span className={theme.text}>More captions per week</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: theme.accent }}>✓</span>
+                    <span className={theme.text}>Multiple platform selection</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: theme.accent }}>✓</span>
+                    <span className={theme.text}>Community access</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: theme.accent }}>✓</span>
+                    <span className={theme.text}>Priority support</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="space-y-3">
+                <Link href="/pricing" 
+                  className={`block w-full text-center py-3 ${theme.buttonBg} ${theme.buttonText} font-medium rounded-lg hover:opacity-90 transition uppercase tracking-wide`}>
+                  View Plans & Upgrade
+                </Link>
+                <button onClick={() => setShowUpgradeModal(false)}
+                  className={`w-full py-3 border-2 ${theme.inputBorder} ${theme.textSecondary} rounded-lg hover:${theme.text} transition`}>
+                  Maybe Later
+                </button>
+              </div>
+
+              {/* Reset info */}
+              <p className={`text-xs ${theme.textTertiary} text-center mt-4`}>
+                Your free captions reset next {config.period === 'week' ? 'Monday' : 'month'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
