@@ -1,14 +1,11 @@
 // app/api/create-checkout-session/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { supabase } from '@/lib/supabase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-01-28.clover',
 });
 
-// Map plan names to Stripe price IDs
-// YOU NEED TO CREATE THESE IN STRIPE DASHBOARD FIRST
 const PRICE_IDS = {
   pro: process.env.STRIPE_PRO_PRICE_ID!,
   premium: process.env.STRIPE_PREMIUM_PRICE_ID!,
@@ -27,35 +24,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get or create Stripe customer
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('stripe_customer_id')
-      .eq('user_id', userId)
-      .single();
-
-    let customerId = subscription?.stripe_customer_id;
-
-    if (!customerId) {
-      // Create new Stripe customer
-      const customer = await stripe.customers.create({
-        email,
-        metadata: {
-          supabase_user_id: userId,
-        },
-      });
-      customerId = customer.id;
-
-      // Update subscription with customer ID
-      await supabase
-        .from('subscriptions')
-        .update({ stripe_customer_id: customerId })
-        .eq('user_id', userId);
-    }
-
-    // Create checkout session
+    // Create checkout session (skip customer creation for now)
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
+      customer_email: email,
       line_items: [
         {
           price: PRICE_IDS[plan as keyof typeof PRICE_IDS],

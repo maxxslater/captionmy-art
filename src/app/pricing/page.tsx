@@ -275,17 +275,29 @@ export default function PricingPage() {
                 </p>
 
                 {/* CTA Button */}
-                <Link
-                  href={`/signup?plan=${tier.id}`}
-                  className={`block w-full text-center px-6 py-3 mb-8 text-sm uppercase tracking-wider font-medium transition ${
-                    tier.popular
-                      ? `text-white`
-                      : `${theme.text} border-2 ${theme.inputBorder} hover:border-gray-400`
-                  }`}
-                  style={tier.popular ? { backgroundColor: theme.accent, color: darkMode ? '#0A0A0A' : 'white' } : {}}
-                >
-                  {tier.cta}
-                </Link>
+                <button
+  onClick={async () => {
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: tier.id,
+          userId: 'guest-' + Date.now(),
+          email: 'guest@checkout.com',
+        }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      alert('Error loading checkout');
+    }
+  }}
+  className="block w-full text-center px-6 py-3 mb-8 text-sm uppercase tracking-wider font-medium transition"
+  style={tier.popular ? { backgroundColor: theme.accent, color: darkMode ? '#0A0A0A' : 'white' } : {}}
+>
+  {tier.cta}
+</button>
 
                 {/* Features */}
                 <div className="space-y-3 mb-6">

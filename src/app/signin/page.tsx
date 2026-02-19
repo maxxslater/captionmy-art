@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function SignInPage() {
+function SignInContent() {
   const [darkMode, setDarkMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,6 +14,7 @@ export default function SignInPage() {
   const [resetSent, setResetSent] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const theme = {
     bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAFAF8]',
@@ -47,17 +48,22 @@ export default function SignInPage() {
         password,
       });
 
-       console.log('SIGNIN RESULT:', data); // ← ADD THIS
-    console.log('SIGNIN ERROR:', signInError); // ← ADD THIS
-
       if (signInError) throw signInError;
 
       if (data.user) {
-        console.log('USER SIGNED IN, REDIRECTING...'); // ← ADD THIS
-        router.push('/');
+        // Check for redirect parameter
+        const redirect = searchParams.get('redirect');
+        const plan = searchParams.get('plan');
+        
+        if (redirect && plan) {
+          router.push(`${redirect}?plan=${plan}`);
+        } else if (redirect) {
+          router.push(redirect);
+        } else {
+          router.push('/');
+        }
       }
     } catch (err: any) {
-        console.error('CATCH ERROR:', err);
       setError(err.message || 'Invalid credentials');
     } finally {
       setLoading(false);
@@ -312,5 +318,17 @@ export default function SignInPage() {
         </footer>
       </div>
     </>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 }
