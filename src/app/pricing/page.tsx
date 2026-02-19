@@ -113,6 +113,30 @@ export default function PricingPage() {
     },
   ];
 
+  const [loading, setLoading] = useState<string | null>(null);
+
+const handleCheckout = async (priceId: string, planName: string) => {
+  setLoading(planName);
+  try {
+    const response = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId }),
+    });
+
+    const data = await response.json();
+
+    if (data.url) {
+      window.location.href = data.url;
+    }
+  } catch (error) {
+    console.error('Checkout error:', error);
+  } finally {
+    setLoading(null);
+  }
+};
+
+
   return (
     <>
       <style jsx global>{`
@@ -276,7 +300,14 @@ export default function PricingPage() {
 
                 {/* CTA Button */}
                 <button
-  onClick={async () => {
+  onClick={async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+
     try {
       const res = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -289,11 +320,13 @@ export default function PricingPage() {
       });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
-    } catch (e) {
-      alert('Error loading checkout');
+    } catch (err) {
+      alert('Error: ' + err);
     }
   }}
-  className="block w-full text-center px-6 py-3 mb-8 text-sm uppercase tracking-wider font-medium transition"
+  className={`w-full text-center px-6 py-3 mb-8 text-sm uppercase tracking-wider font-medium transition ${
+    tier.popular ? 'text-white' : `${theme.text} border-2 ${theme.inputBorder}`
+  }`}
   style={tier.popular ? { backgroundColor: theme.accent, color: darkMode ? '#0A0A0A' : 'white' } : {}}
 >
   {tier.cta}
@@ -331,7 +364,7 @@ export default function PricingPage() {
 
           {/* Comparison Table */}
           <div className={`${theme.cardBg} border-2 ${theme.inputBorder} rounded-sm p-8`}>
-            <h3 className={`text-3xl font-light ${theme.text} mb-8 text-center brush-stroke inline-block mx-auto block`}>
+            <h3 className={`text-3xl font-light ${theme.text} mb-8 text-center brush-stroke inline-block mx-auto`}>
               Feature Comparison
             </h3>
 
